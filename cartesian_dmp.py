@@ -7,17 +7,30 @@ import quaternion_dmp
 
 class CartesianDMP():
     
-    def __init__(self,N_bf=20,dt=0.01):
+    def __init__(self,N_bf=20):
         
-        self.T = 1.0 
-        self.dt = dt
-        self.N = int(self.T/self.dt) # timesteps
         self.alphax = 1.0
-        self.alphaz = 12
-        self.betaz = 3
+        self.alphaz = 4
+        self.betaz = 1
         self.N_bf = N_bf # number of basis functions
         self.tau = 1.0 # temporal scaling
+        
+        # Orientation dmp
+        self.dmp_ori = quaternion_dmp.QuaternionDMP(self.N_bf,self.alphax,self.alphaz,self.betaz,self.tau)
 
+    def imitate(self, pose_demo, sampling_rate=100):
+        
+        self.T = pose_demo.shape[0] / sampling_rate
+        self.N = 10 * pose_demo.shape[0] # 10-fold oversample
+        self.dt = self.T / self.N
+        
+        t = np.linspace(0.0,self.T,pose_demo[:,0].shape[0])
+        self.x = np.zeros([self.N,3])
+        for d in range(3):
+            x_interp = interpolate.interp1d(t,pose_demo[:,d])
+            for n in range(self.N):
+                self.x[n,d] = x_interp(n * self.dt)
+                
         # Centers of basis functions 
         self.c = np.ones(self.N_bf) 
         c_ = np.linspace(0,self.T,self.N_bf)
@@ -27,18 +40,6 @@ class CartesianDMP():
         # Widths of basis functions 
         # (as in https://github.com/studywolf/pydmps/blob/80b0a4518edf756773582cc5c40fdeee7e332169/pydmps/dmp_discrete.py#L37)
         self.h = np.ones(self.N_bf) * self.N_bf**1.5 / self.c / self.alphax
-        
-        # Orientation dmp
-        self.dmp_ori = quaternion_dmp.QuaternionDMP(self.N_bf,self.alphax,self.alphaz,self.betaz,self.tau,self.T,self.dt)
-
-    def imitate(self, pose_demo):
-        
-        t = np.linspace(0.0,self.T,pose_demo[:,0].shape[0])
-        self.x = np.zeros([self.N,3])
-        for d in range(3):
-            x_interp = interpolate.interp1d(t,pose_demo[:,d])
-            for n in range(self.N):
-                self.x[n,d] = x_interp(n * self.dt)
 
         self.dx = np.gradient(self.x,axis=0)/self.dt
         self.ddx = np.gradient(self.dx,axis=0)/self.dt
@@ -131,7 +132,7 @@ if __name__ == "__main__":
     dmp = CartesianDMP()
     x_des, q_des = dmp.imitate(pose_trajectory)
 
-    goal_offset = [0.05,0.0,0.0] # new position goal
+    goal_offset = [0.01,0.01,0.0] # new position goal
     x_rollout, dx_rollout, _, q_rollout, dq_rollout, _ = dmp.rollout(xT=dmp.xT+goal_offset)
 
     fig = plt.figure(figsize=(21,3))

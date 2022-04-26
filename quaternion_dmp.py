@@ -5,17 +5,25 @@ from scipy.spatial.transform import Slerp
 
 class QuaternionDMP():
 
-    def __init__(self,N_bf=20,alphax=1.0,alphaz=12,betaz=3,tau=1.0,T=1.0,dt=0.01):
+    def __init__(self,N_bf=20,alphax=1.0,alphaz=12,betaz=3,tau=1.0):
 
-        self.T = T
-        self.dt = dt
-        self.N = int(self.T/self.dt) # timesteps
         self.alphax = alphax
         self.alphaz = alphaz
         self.betaz = betaz
         self.N_bf = N_bf # number of basis functions
         self.tau = tau # temporal scaling
 
+    def imitate(self,demo_trajectory, sampling_rate=100):
+        
+        self.T = demo_trajectory.shape[0] / sampling_rate
+        self.N = 10 * demo_trajectory.shape[0] # 10-fold oversample
+        self.dt = self.T / self.N
+        
+        t = np.linspace(0.0,self.T,demo_trajectory[:,0].shape[0])
+        self.q = np.zeros([self.N,4])
+        slerp = Slerp(t,R.from_quat(demo_trajectory[:]))
+        self.q = slerp(np.linspace(0.0,self.T,self.N)).as_quat()
+        
         # Centers of basis functions 
         self.c = np.ones(self.N_bf) 
         c_ = np.linspace(0,self.T,self.N_bf)
@@ -25,13 +33,6 @@ class QuaternionDMP():
         # Widths of basis functions 
         # (as in https://github.com/studywolf/pydmps/blob/80b0a4518edf756773582cc5c40fdeee7e332169/pydmps/dmp_discrete.py#L37)
         self.h = np.ones(self.N_bf) * self.N_bf**1.5 / self.c / self.alphax
-
-    def imitate(self,demo_trajectory):
-        
-        t = np.linspace(0.0,self.T,demo_trajectory[:,0].shape[0])
-        self.q = np.zeros([self.N,4])
-        slerp = Slerp(t,R.from_quat(demo_trajectory[:]))
-        self.q = slerp(np.linspace(0.0,self.T,self.N)).as_quat()
 
         self.dq_log = self.quaternion_diff(self.q)
         self.ddq_log = np.zeros(self.dq_log.shape)
