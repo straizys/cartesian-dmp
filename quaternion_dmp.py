@@ -13,16 +13,22 @@ class QuaternionDMP():
         self.N_bf = N_bf # number of basis functions
         self.tau = tau # temporal scaling
 
-    def imitate(self,demo_trajectory, sampling_rate=100):
+    def imitate(self,demo_trajectory, sampling_rate=100, oversampling=True):
         
         self.T = demo_trajectory.shape[0] / sampling_rate
-        self.N = 10 * demo_trajectory.shape[0] # 10-fold oversample
-        self.dt = self.T / self.N
         
-        t = np.linspace(0.0,self.T,demo_trajectory[:,0].shape[0])
-        self.q = np.zeros([self.N,4])
-        slerp = Slerp(t,R.from_quat(demo_trajectory[:]))
-        self.q = slerp(np.linspace(0.0,self.T,self.N)).as_quat()
+        if not oversampling:
+            self.N = demo_trajectory.shape[0]
+            self.dt = self.T / self.N
+            self.q = demo_trajectory
+            
+        else:
+            self.N = 10 * demo_trajectory.shape[0] # 10-fold oversample
+            self.dt = self.T / self.N
+            t = np.linspace(0.0,self.T,demo_trajectory[:,0].shape[0])
+            self.q = np.zeros([self.N,4])
+            slerp = Slerp(t,R.from_quat(demo_trajectory[:]))
+            self.q = slerp(np.linspace(0.0,self.T,self.N)).as_quat()
         
         # Centers of basis functions 
         self.c = np.ones(self.N_bf) 

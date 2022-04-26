@@ -7,29 +7,36 @@ import quaternion_dmp
 
 class CartesianDMP():
     
-    def __init__(self,N_bf=20):
+    def __init__(self,N_bf=20,alphaz=4.0,betaz=1.0):
         
         self.alphax = 1.0
-        self.alphaz = 4
-        self.betaz = 1
+        self.alphaz = alphaz
+        self.betaz = betaz
         self.N_bf = N_bf # number of basis functions
         self.tau = 1.0 # temporal scaling
-        
+
         # Orientation dmp
         self.dmp_ori = quaternion_dmp.QuaternionDMP(self.N_bf,self.alphax,self.alphaz,self.betaz,self.tau)
 
-    def imitate(self, pose_demo, sampling_rate=100):
+    def imitate(self, pose_demo, sampling_rate=100, oversampling=True):
         
         self.T = pose_demo.shape[0] / sampling_rate
-        self.N = 10 * pose_demo.shape[0] # 10-fold oversample
-        self.dt = self.T / self.N
         
-        t = np.linspace(0.0,self.T,pose_demo[:,0].shape[0])
-        self.x = np.zeros([self.N,3])
-        for d in range(3):
-            x_interp = interpolate.interp1d(t,pose_demo[:,d])
-            for n in range(self.N):
-                self.x[n,d] = x_interp(n * self.dt)
+        if not oversampling:
+            self.N = pose_demo.shape[0]
+            self.dt = self.T / self.N
+            self.x = pose_demo[:,:3]
+            
+        else:
+            self.N = 10 * pose_demo.shape[0] # 10-fold oversample
+            self.dt = self.T / self.N
+
+            t = np.linspace(0.0,self.T,pose_demo[:,0].shape[0])
+            self.x = np.zeros([self.N,3])
+            for d in range(3):
+                x_interp = interpolate.interp1d(t,pose_demo[:,d])
+                for n in range(self.N):
+                    self.x[n,d] = x_interp(n * self.dt)
                 
         # Centers of basis functions 
         self.c = np.ones(self.N_bf) 
@@ -59,7 +66,7 @@ class CartesianDMP():
         self.fit_dmp(forcing_target_pos)
         
         # Imitate orientation
-        q_des = self.dmp_ori.imitate(pose_demo[:,3:])
+        q_des = self.dmp_ori.imitate(pose_demo[:,3:], sampling_rate, oversampling)
         
         return self.x, q_des
     
