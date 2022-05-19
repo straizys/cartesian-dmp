@@ -6,25 +6,42 @@ import copy
 
 class QuaternionDMP():
 
-    def __init__(self,N_bf=20,dt=0.01):
+    def __init__(self,N_bf=20,alphax=1.0,alphaz=12,betaz=3,tau=1.0):
 
-        self.T = 1.0 
-        self.dt = dt
-        self.N = int(self.T/self.dt) # timesteps
-        self.alphax = 1.0
-        self.alphaz = 12
-        self.betaz = 3
+        self.alphax = alphax
+        self.alphaz = alphaz
+        self.betaz = betaz
         self.N_bf = N_bf # number of basis functions
-        self.tau = 1.0 # temporal scaling
+        self.tau = tau # temporal scaling
 
         self.phase = 1.0 # initialize phase variable
 
-    def imitate(self,demo_trajectory):
+    def imitate(self,demo_trajectory, sampling_rate=100, oversampling=True):
         
-        t = np.linspace(0.0,self.T,demo_trajectory[:,0].shape[0])
-        self.q_des = np.zeros([self.N,4])
-        slerp = Slerp(t,R.from_quat(demo_trajectory[:]))
-        self.q_des = slerp(np.linspace(0.0,self.T,self.N)).as_quat()
+        self.T = demo_trajectory.shape[0] / sampling_rate
+        
+        if not oversampling:
+            self.N = demo_trajectory.shape[0]
+            self.dt = self.T / self.N
+            self.q_des = demo_trajectory
+            
+        else:
+            self.N = 10 * demo_trajectory.shape[0] # 10-fold oversample
+            self.dt = self.T / self.N
+            t = np.linspace(0.0,self.T,demo_trajectory[:,0].shape[0])
+            self.q_des = np.zeros([self.N,4])
+            slerp = Slerp(t,R.from_quat(demo_trajectory[:]))
+            self.q_des = slerp(np.linspace(0.0,self.T,self.N)).as_quat()
+        
+        # Centers of basis functions 
+        self.c = np.ones(self.N_bf) 
+        c_ = np.linspace(0,self.T,self.N_bf)
+        for i in range(self.N_bf):
+            self.c[i] = np.exp(-self.alphax *c_[i])
+
+        # Widths of basis functions 
+        # (as in https://github.com/studywolf/pydmps/blob/80b0a4518edf756773582cc5c40fdeee7e332169/pydmps/dmp_discrete.py#L37)
+        self.h = np.ones(self.N_bf) * self.N_bf**1.5 / self.c / self.alphax
 
         self.dq_des_log = self.quaternion_diff(self.q_des)
         self.ddq_des_log = np.zeros(self.dq_des_log.shape)
@@ -41,16 +58,6 @@ class QuaternionDMP():
         self.q = copy.deepcopy(self.q0)
         self.dq_log = copy.deepcopy(self.dq0_log)
         self.ddq_log = copy.deepcopy(self.ddq0_log)
-
-        # Centers of basis functions 
-        self.c = np.ones(self.N_bf) 
-        c_ = np.linspace(0,self.T,self.N_bf)
-        for i in range(self.N_bf):
-            self.c[i] = np.exp(-self.alphax *c_[i])
-
-        # Widths of basis functions 
-        # (as in https://github.com/studywolf/pydmps/blob/80b0a4518edf756773582cc5c40fdeee7e332169/pydmps/dmp_discrete.py#L37)
-        self.h = np.ones(self.N_bf) * self.N_bf**1.5 / self.c / self.alphax
 
         # Evaluate the forcing term
         forcing_target = np.zeros([self.N,3]) 
@@ -127,7 +134,7 @@ class QuaternionDMP():
 
     def fit_dmp(self,forcing_target):
 
-        phase = np.exp(-self.alphax*self.tau*np.arange(0,dmp.N)/dmp.N)
+        phase = np.exp(-self.alphax*np.linspace(0.0,self.T,self.N))
         BF = self.RBF(phase)
         X = BF*phase[:,np.newaxis]/np.sum(BF,axis=1)[:,np.newaxis]
         dof = forcing_target.shape[1]
@@ -208,7 +215,7 @@ if __name__ == "__main__":
 
     # Test with random sequence
     dmp = QuaternionDMP(N_bf = 300)
-    q_des = dmp.imitate(np.random.rand(50,4))
+    q_des = dmp.imitate(np.random.rand(50,4),sampling_rate=10)
     q_rollout, _, _ = dmp.rollout()
 
     fig = plt.figure(figsize=(18,3))
@@ -228,8 +235,7 @@ if __name__ == "__main__":
     q_list = []
     for i in range(q_des.shape[0]):
         if i in range(10,15):
-            print('here')
-            q, _, _ = dmp.step(disturbance=30*np.random.randn(3))
+            q, _, _ = dmp.step(disturbance=150*np.random.randn(3))
         else:
             q, _, _ = dmp.step()
         q_list.append(q)
