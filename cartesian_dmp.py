@@ -104,8 +104,14 @@ class CartesianDMP():
         X = BF*phase[:,np.newaxis]/np.sum(BF,axis=1)[:,np.newaxis]
 
         self.weights_pos = np.zeros([self.N_bf,3])
-        for d in range(3):
-            self.weights_pos[:,d] = np.dot(np.linalg.pinv(X),forcing_target[:,d])
+
+        # for d in range(3):
+        #     self.weights_pos[:,d] = np.dot(np.linalg.pinv(X),forcing_target[:,d])
+
+        regcoef = 0.01
+        for d in range(3):        
+            self.weights_pos[:,d] = np.dot(np.dot(np.linalg.pinv(np.dot(X.T,(X)) + \
+                                    regcoef * np.eye(X.shape[1])),X.T),forcing_target[:,d].T) 
 
     def reset(self):
         
@@ -182,24 +188,79 @@ if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
 
-    with open('pose_trajectory.npy', 'rb') as f:
-        demo_trajectory = np.load(f)
+    # with open('pose_trajectory.npy', 'rb') as f:
+    #     demo_trajectory = np.load(f)
 
-    position_trajectory = np.zeros([len(demo_trajectory),3])
-    orientation_trajectory = np.zeros([len(demo_trajectory),4])
-    for i in range(demo_trajectory.shape[0]):
-        position_trajectory[i,:] = demo_trajectory[i][:3,3]
-        orientation_trajectory[i,:] = R.from_matrix(demo_trajectory[i][:3,:3]).as_quat()
+    # position_trajectory = np.zeros([len(demo_trajectory),3])
+    # orientation_trajectory = np.zeros([len(demo_trajectory),4])
+    # for i in range(demo_trajectory.shape[0]):
+    #     position_trajectory[i,:] = demo_trajectory[i][:3,3]
+    #     orientation_trajectory[i,:] = R.from_matrix(demo_trajectory[i][:3,:3]).as_quat()
 
-    pose_trajectory = np.hstack((position_trajectory,orientation_trajectory))
+    # pose_trajectory = np.hstack((position_trajectory,orientation_trajectory))
 
-    # Test goal offset
-    dmp = CartesianDMP()
-    x_des, q_des = dmp.imitate(pose_trajectory)
+    # # Test goal offset
+    # dmp = CartesianDMP()
+    # x_des, q_des = dmp.imitate(pose_trajectory)
 
-    goal_offset = [0.03,0.03,0.0] # new position goal
-    x_rollout, dx_rollout, _, q_rollout, dq_rollout, _ = dmp.rollout(xT=dmp.xT+goal_offset)
+    # goal_offset = [0.03,0.03,0.0] # new position goal
+    # x_rollout, dx_rollout, _, q_rollout, dq_rollout, _ = dmp.rollout(xT=dmp.xT+goal_offset)
 
+    # fig = plt.figure(figsize=(21,3))
+    # for d in range(3):
+    #     plt.subplot(131+d)
+    #     plt.plot(x_des[:,d],label='demo')
+    #     plt.plot(x_rollout[:,d],'--',label='rollout')
+    # plt.suptitle('Position trajectory')
+    # plt.show()
+
+    # fig = plt.figure(figsize=(35,3))
+    # for d in range(4):
+    #     plt.subplot(141+d)
+    #     plt.plot(q_des[:,d],label='demo')
+    #     plt.plot(q_rollout[:,d],'--',label='rollout')
+    # plt.suptitle('Orientation trajectory')
+    # plt.show()
+
+    # # Test the step function
+    # dmp = CartesianDMP()
+    # x_des, q_des = dmp.imitate(pose_trajectory)
+    # dmp.reset()
+
+    # x_list = []
+    # q_list = []
+    # for i in range(x_des.shape[0]):
+    #     x, _, _, q, _, _ = dmp.step()
+    #     x_list.append(x)
+    #     q_list.append(q)
+
+    # fig = plt.figure(figsize=(21,3))
+    # for d in range(3):
+    #     plt.subplot(131+d)
+    #     plt.plot(x_des[:,d],label='demo')
+    #     plt.plot(np.array(x_list)[:,d],'--',label='rollout')
+    # plt.suptitle('Position trajectory')
+    # plt.show()
+
+    # fig = plt.figure(figsize=(21,3))
+    # for d in range(4):
+    #     plt.subplot(141+d)
+    #     plt.plot(q_des[:,d],label='demo')
+    #     plt.plot(np.array(q_list)[:,d],'--',label='rollout')
+    # plt.suptitle('Position trajectory')
+    # plt.show()
+
+    # Test system without orientation
+    demo = np.zeros([100,3])
+    demo[:,0] = np.sin(np.arange(0, 1, 0.01) * 5)
+    demo[:,1] = np.arange(0, 1, 0.01) * 5
+    demo[:,2] = np.cos(np.arange(0, 1, 0.01) * 5)
+
+    dmp = CartesianDMP(alphaz=25.0,betaz=25.0/4.0,orientation=False)
+    x_des = dmp.imitate(demo)
+
+    # Rollout (no orientation)
+    x_rollout, _, _ = dmp.rollout()
     fig = plt.figure(figsize=(21,3))
     for d in range(3):
         plt.subplot(131+d)
@@ -208,25 +269,12 @@ if __name__ == "__main__":
     plt.suptitle('Position trajectory')
     plt.show()
 
-    fig = plt.figure(figsize=(35,3))
-    for d in range(4):
-        plt.subplot(141+d)
-        plt.plot(q_des[:,d],label='demo')
-        plt.plot(q_rollout[:,d],'--',label='rollout')
-    plt.suptitle('Orientation trajectory')
-    plt.show()
-
-    # Test the step function
-    dmp = CartesianDMP()
-    x_des, q_des = dmp.imitate(pose_trajectory)
+    # Feedback mode (no orientation)
     dmp.reset()
-
     x_list = []
-    q_list = []
     for i in range(x_des.shape[0]):
-        x, _, _, q, _, _ = dmp.step()
+        x, _, _ = dmp.step()
         x_list.append(x)
-        q_list.append(q)
 
     fig = plt.figure(figsize=(21,3))
     for d in range(3):
@@ -236,10 +284,20 @@ if __name__ == "__main__":
     plt.suptitle('Position trajectory')
     plt.show()
 
+    # Test disturbance rejection
+    dmp.reset()
+    x_list = []
+    for i in range(x_des.shape[0]):
+        if i in range(10,15):
+            x, _, _ = dmp.step(disturbance=[1800,1800,1800,0,0,0])
+        else:
+            x, _, _ = dmp.step()
+        x_list.append(x)
+
     fig = plt.figure(figsize=(21,3))
-    for d in range(4):
-        plt.subplot(141+d)
-        plt.plot(q_des[:,d],label='demo')
-        plt.plot(np.array(q_list)[:,d],'--',label='rollout')
+    for d in range(3):
+        plt.subplot(131+d)
+        plt.plot(x_des[:,d],label='demo')
+        plt.plot(np.array(x_list)[:,d],'--',label='rollout')
     plt.suptitle('Position trajectory')
     plt.show()
