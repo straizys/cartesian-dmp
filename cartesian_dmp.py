@@ -115,6 +115,7 @@ class CartesianDMP():
     def step(self, disturbance=None):
         
         disturbance_pos = np.zeros(3)
+        disturbance_ori = np.zeros(3)
 
         if disturbance is None:
             disturbance = np.zeros(6)
@@ -128,8 +129,10 @@ class CartesianDMP():
         self.ddx = self.alphaz * (self.betaz * (self.xT - self.x) - self.dx) + forcing_term_pos + disturbance_pos
         self.dx += self.ddx * self.dt * self.tau
         self.x += self.dx * self.dt * self.tau
+
+        q, dq, ddq = self.dmp_ori.step(disturbance=disturbance_ori)
         
-        return copy.deepcopy(self.x), copy.deepcopy(self.dx), copy.deepcopy(self.ddx)
+        return copy.deepcopy(self.x), copy.deepcopy(self.dx), copy.deepcopy(self.ddx), q, dq, ddq
 
     def rollout(self,tau=1.0,xT=None):
 
@@ -210,15 +213,25 @@ if __name__ == "__main__":
     dmp.reset()
 
     x_list = []
+    q_list = []
     for i in range(x_des.shape[0]):
-        x, _, _ = dmp.step()
+        x, _, _, q, _, _ = dmp.step()
         x_list.append(x)
+        q_list.append(q)
 
     fig = plt.figure(figsize=(21,3))
     for d in range(3):
         plt.subplot(131+d)
         plt.plot(x_des[:,d],label='demo')
         plt.plot(np.array(x_list)[:,d],'--',label='rollout')
+    plt.suptitle('Position trajectory')
+    plt.show()
+
+    fig = plt.figure(figsize=(21,3))
+    for d in range(4):
+        plt.subplot(141+d)
+        plt.plot(q_des[:,d],label='demo')
+        plt.plot(np.array(q_list)[:,d],'--',label='rollout')
     plt.suptitle('Position trajectory')
     plt.show()
     
