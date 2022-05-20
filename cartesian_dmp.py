@@ -8,7 +8,7 @@ import quaternion_dmp
 
 class CartesianDMP():
     
-    def __init__(self,N_bf=20,alphaz=4.0,betaz=1.0):
+    def __init__(self,N_bf=20,alphaz=4.0,betaz=1.0,orientation=True):
         
         self.alphax = 1.0
         self.alphaz = alphaz
@@ -19,7 +19,9 @@ class CartesianDMP():
         self.phase = 1.0 # initialize phase variable
 
         # Orientation dmp
-        self.dmp_ori = quaternion_dmp.QuaternionDMP(self.N_bf,self.alphax,self.alphaz,self.betaz,self.tau)
+        self.orientation = orientation 
+        if orientation:
+            self.dmp_ori = quaternion_dmp.QuaternionDMP(self.N_bf,self.alphax,self.alphaz,self.betaz,self.tau)
 
     def imitate(self, pose_demo, sampling_rate=100, oversampling=True):
         
@@ -74,9 +76,11 @@ class CartesianDMP():
         self.fit_dmp(forcing_target_pos)
         
         # Imitate orientation
-        q_des = self.dmp_ori.imitate(pose_demo[:,3:], sampling_rate, oversampling)
-        
-        return self.x_des, q_des
+        if self.orientation:
+            q_des = self.dmp_ori.imitate(pose_demo[:,3:], sampling_rate, oversampling)
+            return self.x_des, q_des
+        else:
+            return self.x_des
     
     def RBF(self, phase):
 
@@ -110,7 +114,8 @@ class CartesianDMP():
         self.dx = copy.deepcopy(self.dx0)
         self.ddx = copy.deepcopy(self.ddx0)
 
-        self.dmp_ori.reset()
+        if self.orientation:
+            self.dmp_ori.reset()
 
     def step(self, disturbance=None):
         
@@ -130,9 +135,11 @@ class CartesianDMP():
         self.dx += self.ddx * self.dt * self.tau
         self.x += self.dx * self.dt * self.tau
 
-        q, dq, ddq = self.dmp_ori.step(disturbance=disturbance_ori)
-        
-        return copy.deepcopy(self.x), copy.deepcopy(self.dx), copy.deepcopy(self.ddx), q, dq, ddq
+        if self.orientation:
+            q, dq, ddq = self.dmp_ori.step(disturbance=disturbance_ori)
+            return copy.deepcopy(self.x), copy.deepcopy(self.dx), copy.deepcopy(self.ddx), q, dq, ddq
+        else:
+            return copy.deepcopy(self.x), copy.deepcopy(self.dx), copy.deepcopy(self.ddx)
 
     def rollout(self,tau=1.0,xT=None):
 
@@ -162,9 +169,11 @@ class CartesianDMP():
                 x_rollout[n,d] = x_rollout[n-1,d] + tau*dx_rollout[n-1,d]*self.dt
         
         # Get orientation rollout
-        q_rollout,dq_log_rollout,ddq_log_rollout = self.dmp_ori.rollout(tau=tau)
-        
-        return x_rollout,dx_rollout,ddx_rollout, q_rollout,dq_log_rollout,ddq_log_rollout
+        if self.orientation:
+            q_rollout,dq_log_rollout,ddq_log_rollout = self.dmp_ori.rollout(tau=tau)
+            return x_rollout,dx_rollout,ddx_rollout, q_rollout,dq_log_rollout,ddq_log_rollout
+        else:
+            return x_rollout,dx_rollout,ddx_rollout
 
 
 # Test
@@ -234,4 +243,3 @@ if __name__ == "__main__":
         plt.plot(np.array(q_list)[:,d],'--',label='rollout')
     plt.suptitle('Position trajectory')
     plt.show()
-    
